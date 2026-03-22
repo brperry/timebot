@@ -21,17 +21,38 @@ function isValidIana(zone) {
 /**
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
  * @param {string | null} override IANA from /time timezone option (already validated when present)
+ * @returns {{ zone: string, source: 'override' | 'guild' | 'env' | 'utc' }}
  */
 function resolveEffectiveZone(interaction, override) {
-  if (override) return { zone: override.trim() };
+  if (override) return { zone: override.trim(), source: 'override' };
   if (interaction.guildId) {
     const g = getDefaultTimezone(interaction.guildId);
-    if (g && isValidIana(g)) return { zone: g };
+    if (g && isValidIana(g)) return { zone: g, source: 'guild' };
   }
   const envZ = process.env.DEFAULT_TIMEZONE?.trim();
-  if (envZ && isValidIana(envZ)) return { zone: envZ };
-  return { zone: 'UTC' };
+  if (envZ && isValidIana(envZ)) return { zone: envZ, source: 'env' };
+  return { zone: 'UTC', source: 'utc' };
 }
+
+/**
+ * @param {string} zone
+ * @param {'guild' | 'env' | 'utc'} source
+ */
+function describeAppliedTimezone(zone, source) {
+  switch (source) {
+    case 'guild':
+      return `**Timezone used:** \`${zone}\` (this server's default).`;
+    case 'env':
+      return `**Timezone used:** \`${zone}\` (this bot's \`DEFAULT_TIMEZONE\`).`;
+    case 'utc':
+      return `**Timezone used:** \`${zone}\` (no server default and no bot \`DEFAULT_TIMEZONE\`).`;
+    default:
+      return `**Timezone used:** \`${zone}\`.`;
+  }
+}
+
+const timezoneHowToSpecify =
+  `**Choose a zone for this command:** add the **timezone** option on \`/time\` (IANA name, e.g. \`Europe/Berlin\`).`;
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
@@ -61,7 +82,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
-      const { zone } = resolveEffectiveZone(interaction, tzOpt);
+      const { zone, source } = resolveEffectiveZone(interaction, tzOpt);
 
       const unix = parseWhenToUnixSeconds(when, zone);
       if (unix === null) {
@@ -74,11 +95,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       const tag = `<t:${unix}:${style}>`;
+      let body =
+        `**Preview**\n${tag}\n\n` +
+        `**Copy**\n\`\`\`\n${tag}\n\`\`\`\n\n` +
+        `Paste what you copied into a message. Others see it in their local time.`;
+      if (!tzOpt) {
+        body +=
+          `\n\n${describeAppliedTimezone(zone, source)}\n\n${timezoneHowToSpecify}`;
+      }
       await interaction.reply({
-        content:
-          `**Preview**\n${tag}\n\n` +
-          `**Copy**\n\`\`\`\n${tag}\n\`\`\`\n\n` +
-          `Paste what you copied into a message. Others see it in their local time.`,
+        content: body,
         ephemeral: true,
       });
       return;
