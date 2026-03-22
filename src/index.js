@@ -54,6 +54,27 @@ function describeAppliedTimezone(zone, source) {
 const timezoneHowToSpecify =
   `**Choose a zone for this command:** add the **timezone** option on \`/time\` (IANA name, e.g. \`Europe/Berlin\`).`;
 
+/** @returns {number} ms to wait before removing the /time ephemeral reply; 0 = keep until dismissed */
+function getEphemeralTimeDismissMs() {
+  const raw = process.env.EPHEMERAL_TIME_DISMISS_MS;
+  if (raw === undefined || raw === '') return 25_000;
+  const n = Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isFinite(n) || n < 0) return 25_000;
+  return n;
+}
+
+/**
+ * Discord has no “fade” animation for messages; deleting the ephemeral reply is the closest behavior.
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction
+ * @param {number} ms
+ */
+function scheduleEphemeralDelete(interaction, ms) {
+  if (!ms) return;
+  setTimeout(() => {
+    interaction.deleteReply().catch(() => {});
+  }, ms);
+}
+
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
 });
@@ -95,10 +116,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       const tag = `<t:${unix}:${style}>`;
+      const dismissMs = getEphemeralTimeDismissMs();
       let body =
         `**Preview**\n${tag}\n\n` +
-        `**Copy**\n\`\`\`\n${tag}\n\`\`\`\n\n` +
-        `Paste what you copied into a message. Others see it in their local time.`;
+        `**Copy:** \`${tag}\` (tap/click the code) or select the block:\n\`\`\`\n${tag}\n\`\`\`\n\n` +
+        `Paste into a message. Others see it in their local time.\n\n`;
+      if (dismissMs > 0) {
+        const s = Math.round(dismissMs / 1000);
+        body += `_Discord bots cannot paste into your clipboard — copy the tag above. This message closes in ~${s}s._`;
+      } else {
+        body += `_Discord bots cannot paste into your clipboard — copy the tag above._`;
+      }
       if (!tzOpt) {
         body +=
           `\n\n${describeAppliedTimezone(zone, source)}\n\n${timezoneHowToSpecify}`;
@@ -107,6 +135,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         content: body,
         ephemeral: true,
       });
+      scheduleEphemeralDelete(interaction, dismissMs);
       return;
     }
 
