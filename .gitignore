@@ -27,3 +27,6 @@ Thumbs.db
 
 # Optional
 *.local
+
+# Local bot data (e.g. per-guild settings)
+data/
