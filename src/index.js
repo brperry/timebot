@@ -75,7 +75,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const tag = `<t:${unix}:${style}>`;
       await interaction.reply({
-        content: `Copy this timestamp:\n\`\`\`\n${tag}\n\`\`\`\nIt will show in each reader’s local time in Discord.`,
+        content:
+          `**Preview**\n${tag}\n\n` +
+          `**Copy**\n\`\`\`\n${tag}\n\`\`\`\n\n` +
+          `Paste what you copied into a message. Others see it in their local time.`,
+        ephemeral: true,
       });
       return;
     }
