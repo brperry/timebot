@@ -7,6 +7,7 @@ import {
   clearDefaultTimezone,
 } from './guildConfig.js';
 import { parseWhenToUnixSeconds } from './timeParse.js';
+import { normalizeTimezoneInput } from './timezoneAliases.js';
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -20,17 +21,23 @@ function isValidIana(zone) {
 
 /**
  * @param {import('discord.js').ChatInputCommandInteraction} interaction
- * @param {string | null} override IANA from /time timezone option (already validated when present)
+ * @param {string | null} override normalized IANA from /time timezone option (already validated when present)
  * @returns {{ zone: string, source: 'override' | 'guild' | 'env' | 'utc' }}
  */
 function resolveEffectiveZone(interaction, override) {
-  if (override) return { zone: override.trim(), source: 'override' };
+  if (override) return { zone: override, source: 'override' };
   if (interaction.guildId) {
     const g = getDefaultTimezone(interaction.guildId);
-    if (g && isValidIana(g)) return { zone: g, source: 'guild' };
+    if (g) {
+      const z = normalizeTimezoneInput(g.trim());
+      if (isValidIana(z)) return { zone: z, source: 'guild' };
+    }
   }
   const envZ = process.env.DEFAULT_TIMEZONE?.trim();
-  if (envZ && isValidIana(envZ)) return { zone: envZ, source: 'env' };
+  if (envZ) {
+    const z = normalizeTimezoneInput(envZ);
+    if (isValidIana(z)) return { zone: z, source: 'env' };
+  }
   return { zone: 'UTC', source: 'utc' };
 }
 
@@ -52,7 +59,7 @@ function describeAppliedTimezone(zone, source) {
 }
 
 const timezoneHowToSpecify =
-  `**Choose a zone for this command:** add the **timezone** option on \`/time\` (IANA name, e.g. \`Europe/Berlin\`).`;
+  `**Choose a zone for this command:** add the **timezone** option on \`/time\` — IANA (e.g. \`Europe/Berlin\`) or US shorthands (\`EST\`, \`CST\`, \`PST\`, \`ET\`, \`CT\`, \`PT\`, \`GMT\`, \`ZULU\`, etc.).`;
 
 /** @returns {number} ms to wait before removing the /time ephemeral reply; 0 = keep until dismissed */
 function getEphemeralTimeDismissMs() {
@@ -89,21 +96,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.commandName === 'time') {
       const when = interaction.options.getString('when', true);
-      const tzOpt = interaction.options.getString('timezone');
+      const tzRaw = interaction.options.getString('timezone');
       const style = interaction.options.getString('style') ?? 'f';
 
-      if (tzOpt) {
-        const z = tzOpt.trim();
+      let overrideZone = null;
+      if (tzRaw !== null && tzRaw !== undefined) {
+        const z = normalizeTimezoneInput(tzRaw.trim());
         if (!isValidIana(z)) {
           await interaction.reply({
-            content: `Invalid IANA timezone: \`${z}\`. Example: \`America/Los_Angeles\`.`,
+            content:
+              `Invalid timezone: \`${tzRaw.trim()}\`. Use an IANA name (e.g. \`America/Los_Angeles\`) or a US shorthand (\`EST\`, \`CST\`, \`PST\`, \`ET\`, \`CT\`, \`PT\`, \`GMT\`, \`ZULU\`).`,
             ephemeral: true,
           });
           return;
         }
+        overrideZone = z;
       }
 
-      const { zone, source } = resolveEffectiveZone(interaction, tzOpt);
+      const { zone, source } = resolveEffectiveZone(interaction, overrideZone);
 
       const unix = parseWhenToUnixSeconds(when, zone);
       if (unix === null) {
@@ -127,7 +137,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       } else {
         body += `_Discord bots cannot paste into your clipboard — copy the tag above._`;
       }
-      if (!tzOpt) {
+      if (overrideZone === null) {
         body +=
           `\n\n${describeAppliedTimezone(zone, source)}\n\n${timezoneHowToSpecify}`;
       }
@@ -162,10 +172,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (sub === 'set') {
-        const zone = interaction.options.getString('zone', true).trim();
+        const raw = interaction.options.getString('zone', true).trim();
+        const zone = normalizeTimezoneInput(raw);
         if (!isValidIana(zone)) {
           await interaction.reply({
-            content: `Invalid IANA timezone: \`${zone}\`. Use names like \`Europe/Berlin\` or \`America/Chicago\`.`,
+            content:
+              `Invalid timezone: \`${raw}\`. Use an IANA name (e.g. \`Europe/Berlin\`) or a US shorthand (\`EST\`, \`CST\`, \`PST\`, etc.).`,
             ephemeral: true,
           });
           return;
@@ -190,10 +202,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (sub === 'show') {
         const saved = getDefaultTimezone(guildId);
+        const savedDisplay = saved ? normalizeTimezoneInput(saved) : null;
         const effective = resolveEffectiveZone(interaction, null).zone;
         await interaction.reply({
           content:
-            `**Saved for this server:** ${saved ? `\`${saved}\`` : '*(none)*'}\n` +
+            `**Saved for this server:** ${savedDisplay ? `\`${savedDisplay}\`` : '*(none)*'}\n` +
             `**Effective for /time (no override):** \`${effective}\``,
           ephemeral: true,
         });

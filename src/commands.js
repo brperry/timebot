@@ -25,7 +25,7 @@ export const timeCommand = new SlashCommandBuilder()
   .addStringOption((opt) =>
     opt
       .setName('timezone')
-      .setDescription('IANA zone for ambiguous times (overrides server default)')
+      .setDescription('IANA or US shorthand (EST, CST, PST, GMT, ZULU, …); overrides server default')
       .setRequired(false)
   )
   .addStringOption((opt) =>
@@ -48,11 +48,11 @@ export const configCommand = new SlashCommandBuilder()
       .addSubcommand((sub) =>
         sub
           .setName('set')
-          .setDescription('Set the server default IANA timezone')
+          .setDescription('Set the server default timezone (IANA or US shorthand)')
           .addStringOption((opt) =>
             opt
               .setName('zone')
-              .setDescription('e.g. America/New_York, Europe/Berlin')
+              .setDescription('e.g. America/New_York, Europe/Berlin, EST, CST, PST')
               .setRequired(true)
           )
       )
