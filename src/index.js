@@ -43,10 +43,12 @@ function resolveEffectiveZone(interaction, override) {
 
 /**
  * @param {string} zone
- * @param {'guild' | 'env' | 'utc'} source
+ * @param {'override' | 'guild' | 'env' | 'utc'} source
  */
 function describeAppliedTimezone(zone, source) {
   switch (source) {
+    case 'override':
+      return `**Timezone used:** \`${zone}\` (from the **timezone** option).`;
     case 'guild':
       return `**Timezone used:** \`${zone}\` (this server's default).`;
     case 'env':
@@ -137,9 +139,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       } else {
         body += `_Discord bots cannot paste into your clipboard — copy the tag above._`;
       }
+      body += `\n\n${describeAppliedTimezone(zone, source)}`;
       if (overrideZone === null) {
-        body +=
-          `\n\n${describeAppliedTimezone(zone, source)}\n\n${timezoneHowToSpecify}`;
+        body += `\n\n${timezoneHowToSpecify}`;
       }
       await interaction.reply({
         content: body,
