@@ -45,23 +45,50 @@ function resolveEffectiveZone(interaction, override) {
  * @param {string} zone
  * @param {'override' | 'guild' | 'env' | 'utc'} source
  */
-function describeAppliedTimezone(zone, source) {
+function formatTimezoneBlock(zone, source) {
+  let sourceLine;
   switch (source) {
     case 'override':
-      return `**Timezone used:** \`${zone}\` (from the **timezone** option).`;
+      sourceLine = `from **timezone** on this command`;
+      break;
     case 'guild':
-      return `**Timezone used:** \`${zone}\` (this server's default).`;
+      sourceLine = `server default (\`/config timezone\`)`;
+      break;
     case 'env':
-      return `**Timezone used:** \`${zone}\` (this bot's \`DEFAULT_TIMEZONE\`).`;
+      sourceLine = `bot \`DEFAULT_TIMEZONE\``;
+      break;
     case 'utc':
-      return `**Timezone used:** \`${zone}\` (no server default and no bot \`DEFAULT_TIMEZONE\`).`;
+      sourceLine = `no server default or bot \`DEFAULT_TIMEZONE\``;
+      break;
     default:
-      return `**Timezone used:** \`${zone}\`.`;
+      sourceLine = '';
   }
+  return (
+    `**Timezone:** \`${zone}\` — ${sourceLine}.\n` +
+    `_Bare clock times use this zone; phrases with an offset (\`… UTC\`, etc.) use that offset._`
+  );
 }
 
-const timezoneHowToSpecify =
-  `**Choose a zone for this command:** add the **timezone** option on \`/time\` — IANA (e.g. \`Europe/Berlin\`) or US shorthands (\`EST\`, \`CST\`, \`PST\`, \`ET\`, \`CT\`, \`PT\`, \`GMT\`, \`ZULU\`, etc.).`;
+/** Discord \`<t:…:style>\` — short labels for **style** */
+const STYLE_DESCRIPTIONS = Object.freeze({
+  f: 'short date/time',
+  F: 'long date/time',
+  R: 'relative',
+  t: 'time (short)',
+  T: 'time (long)',
+  d: 'date (short)',
+  D: 'date (long)',
+});
+
+/**
+ * @param {string} style
+ */
+function formatOptionalOptionsHelp(style) {
+  const desc = STYLE_DESCRIPTIONS[style] ?? 'custom';
+  return (
+    `**Options:** **timezone** — if omitted: server default → \`DEFAULT_TIMEZONE\` → **UTC**; if set: IANA or \`EST\`, \`PST\`, … · **style** — this reply uses \`${style}\` (${desc}); pick **style** on \`/time\` for \`f\`/\`F\`/\`R\`/etc.`
+  );
+}
 
 /** @returns {number} ms to wait before removing the /time ephemeral reply; 0 = keep until dismissed */
 function getEphemeralTimeDismissMs() {
@@ -130,19 +157,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const tag = `<t:${unix}:${style}>`;
       const dismissMs = getEphemeralTimeDismissMs();
       let body =
-        `**Preview**\n${tag}\n\n` +
-        `**Copy:** \`${tag}\` (tap/click the code) or select the block:\n\`\`\`\n${tag}\n\`\`\`\n\n` +
-        `Paste into a message. Others see it in their local time.\n\n`;
+        `**Your timestamp** (everyone sees it in their own time)\n${tag}\n\n` +
+        `**Copy & paste** this into a message:\n\`\`\`\n${tag}\n\`\`\`\n\n`;
       if (dismissMs > 0) {
         const s = Math.round(dismissMs / 1000);
-        body += `_Discord bots cannot paste into your clipboard — copy the tag above. This message closes in ~${s}s._`;
-      } else {
-        body += `_Discord bots cannot paste into your clipboard — copy the tag above._`;
+        body += `_This message closes in ~${s}s._`;
       }
-      body += `\n\n${describeAppliedTimezone(zone, source)}`;
-      if (overrideZone === null) {
-        body += `\n\n${timezoneHowToSpecify}`;
-      }
+      body += `\n\n${formatTimezoneBlock(zone, source)}\n\n${formatOptionalOptionsHelp(style)}`;
       await interaction.reply({
         content: body,
         ephemeral: true,
