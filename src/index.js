@@ -41,34 +41,6 @@ function resolveEffectiveZone(interaction, override) {
   return { zone: 'UTC', source: 'utc' };
 }
 
-/**
- * @param {string} zone
- * @param {'override' | 'guild' | 'env' | 'utc'} source
- */
-function formatTimezoneBlock(zone, source) {
-  let sourceLine;
-  switch (source) {
-    case 'override':
-      sourceLine = `from **timezone** on this command`;
-      break;
-    case 'guild':
-      sourceLine = `server default (\`/config timezone\`)`;
-      break;
-    case 'env':
-      sourceLine = `bot \`DEFAULT_TIMEZONE\``;
-      break;
-    case 'utc':
-      sourceLine = `no server default or bot \`DEFAULT_TIMEZONE\``;
-      break;
-    default:
-      sourceLine = '';
-  }
-  return (
-    `**Timezone:** \`${zone}\` — ${sourceLine}.\n` +
-    `_Bare clock times use this zone; phrases with an offset (\`… UTC\`, etc.) use that offset._`
-  );
-}
-
 /** Discord \`<t:…:style>\` — short labels for **style** */
 const STYLE_DESCRIPTIONS = Object.freeze({
   f: 'short date/time',
@@ -81,13 +53,28 @@ const STYLE_DESCRIPTIONS = Object.freeze({
 });
 
 /**
- * @param {string} style
+ * @param {string} zone
+ * @param {'override' | 'guild' | 'env' | 'utc'} source
  */
-function formatOptionalOptionsHelp(style) {
-  const desc = STYLE_DESCRIPTIONS[style] ?? 'custom';
-  return (
-    `**Options:** **timezone** — if omitted: server default → \`DEFAULT_TIMEZONE\` → **UTC**; if set: IANA or \`EST\`, \`PST\`, … · **style** — this reply uses \`${style}\` (${desc}); pick **style** on \`/time\` for \`f\`/\`F\`/\`R\`/etc.`
-  );
+function formatTimezoneExplanation(zone, source) {
+  let basis;
+  switch (source) {
+    case 'override':
+      basis = `the **timezone** option you provided on this command`;
+      break;
+    case 'guild':
+      basis = `this server's default (**/config timezone**)`;
+      break;
+    case 'env':
+      basis = `the bot's \`DEFAULT_TIMEZONE\` setting`;
+      break;
+    case 'utc':
+      basis = `**UTC** (no server default or \`DEFAULT_TIMEZONE\`)`;
+      break;
+    default:
+      basis = '';
+  }
+  return `We used the \`${zone}\` timezone based on ${basis}.`;
 }
 
 /** @returns {number} ms to wait before removing the /time ephemeral reply; 0 = keep until dismissed */
@@ -156,14 +143,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       const tag = `<t:${unix}:${style}>`;
       const dismissMs = getEphemeralTimeDismissMs();
+      const styleDesc = STYLE_DESCRIPTIONS[style] ?? 'custom';
       let body =
-        `**Your timestamp** (everyone sees it in their own time)\n${tag}\n\n` +
-        `**Copy & paste** this into a message:\n\`\`\`\n${tag}\n\`\`\`\n\n`;
+        `**Here's your output format:**\n` +
+        `\`${tag}\` · style **${style}** (${styleDesc})\n\n` +
+        `**Here's what it will look like:**\n${tag}\n\n` +
+        `${formatTimezoneExplanation(zone, source)}\n\n` +
+        `**Copy this into your message** to show users the dynamic time:\n\`\`\`\n${tag}\n\`\`\`\n`;
       if (dismissMs > 0) {
         const s = Math.round(dismissMs / 1000);
-        body += `_This message closes in ~${s}s._`;
+        body += `\nThis message will disappear in ${s} seconds.`;
       }
-      body += `\n\n${formatTimezoneBlock(zone, source)}\n\n${formatOptionalOptionsHelp(style)}`;
       await interaction.reply({
         content: body,
         ephemeral: true,
